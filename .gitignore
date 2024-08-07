@@ -1,7 +1,6 @@
 /aws.yml
 /create.ipynb
 /keys
-/lambda_client.py
 /scp.bat
 /small.py
 /startup.bat
