@@ -8,12 +8,12 @@ import time
 from types import SimpleNamespace
 cfg = SimpleNamespace(**{})
 
-cfg.connection_attempts=120
+cfg.connection_attempts=600
 # cfg.region = 'us-east-1'
 cfg.min_instances=1
 cfg.total_instances=1
-cfg.onDemand_instances=0
-cfg.spot_instances=1
+cfg.onDemand_instances=0    #more expensive
+cfg.spot_instances=1        #cheaper
 
 cfg.MaxSpotPriceAsPercentageOfOptimalOnDemandPrice = 100
 
@@ -22,13 +22,16 @@ cfg.MaxSpotPriceAsPercentageOfOptimalOnDemandPrice = 100
 #dictionary of key(destination): item(list of sources) pairs
 cfg.dirs = {
     'nvme/python':["C:/Users/K159658/tim/python/tim_utils", "C:/Users/K159658/tim/python/complextorch",
-                   r"C:\Users\K159658\tim\python\NAFNet","C:/Users/K159658/tim/python/CVNAFNN/CVNAFNet.py",
-                   "C:/Users/K159658/tim/python/CVNAFNN/CV_SR_lightning.py"],
+                   r"C:\Users\K159658\tim\python\NAFNet"],
     # 'nvme/python/files':[r"C:\Users\K159658\tim\python\CVNAFNN\files\sicd.zip"],
 }
 
+#dictionary of key(destination): item(list of sources) pairs
+#the string 'INSTANCE_ID' can be used as a placeholder for the id of the instance and will be replaced at runtime
 cfg.rsync = {
-    "C:/Users/K159658/tim/python/CVNAFNN/files": ['nvme/python/NAFNet/experiments/']
+    "C:/Users/K159658/tim/python/CVNAFNN/files": ['nvme/python/NAFNet/experiments/'],
+    "C:/Users/K159658/tim/python/CVNAFNN/files/INSTANCE_ID/NAFNet-SICD-width64": ['nvme/python/NAFNet/options/train/SICD/']
+
 }
 
 class CreateFleet():
@@ -43,6 +46,9 @@ class CreateFleet():
         self.pClient = paramiko.SSHClient()
         self.pClient.set_missing_host_key_policy(paramiko.AutoAddPolicy())       
         self.pkey = paramiko.Ed25519Key.from_private_key_file(self.key_file)
+
+        self.allowed_instances=['g5.8xlarge']#['g5.12xlarge']#['g5.2xlarge', 'g5.4xlarge', 'g5.8xlarge']#['g5.12xlarge', 'g5.48xlarge','p4d.24xlarge']#['g5.2xlarge', 'g5.4xlarge', 'g5.8xlarge']#, 'g5.16xlarge']'g5.24xlarge',['g5.12xlarge',  'g5.48xlarge','p4d.24xlarge']#
+
 
         self.copied_python = False
         
@@ -127,13 +133,6 @@ class CreateFleet():
         else:
             # print(f'scp -r -o StrictHostKeyChecking=no -i {self.key_file} {source_path} ubuntu@{self.ip}:{remote_path}')
             subprocess.run(f'scp -r -o StrictHostKeyChecking=no -i {self.key_file} {source_path} ubuntu@{self.ip}:{remote_path}')
-            # for root, dirs, files in os.walk(local_path):
-            #     dest_dir = os.path.join(remote_path, os.path.relpath(root, local_path)).replace('\\', '/')
-            #     self.run_bash(f'mkdir {dest_dir}')
-
-            #     for file in files:
-            #         file_path = os.path.join(root,file).replace('\\', '/')
-            #         subprocess.run(f'scp -o StrictHostKeyChecking=no -i {self.key_file} {file_path} {self.username}@{self.ip}:{dest_dir}')
 
     def export_conda(self):
         subprocess.run('conda env export -f aws.yml --from-history')
@@ -155,9 +154,11 @@ class CreateFleet():
             print("STATE of INSTANCE: ", state)
         for local in cfg.rsync.keys():
         # for local, remote in [(key, value)  for key, values in cfg.rsync.items() for value in values]:
-            self.mkdir(local, self.inst_id[0])
-            target_path = f"{local}/{self.inst_id[0]}"
-            
+            if 'INSTANCE_ID' in local:
+                target_path = local.replace("INSTANCE_ID", self.inst_id[0])
+            else:
+                self.mkdir(local, self.inst_id[0])
+                target_path = f"{local}/{self.inst_id[0]}"
             if not self.copied_python:
                 for path in cfg.dirs['nvme/python']:
                     if os.path.isfile(path):
@@ -172,12 +173,7 @@ class CreateFleet():
         targ_dir = os.path.join(target,basename).replace('\\', '/')
         if basename:
             self.mkdir(target,basename)
-        try:
-            self.pClient.get_transport().send_ignore()
-        except:
-            print("Trying to Reconnect SSH Client")
-            self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
-
+        
         with self.pClient.open_sftp() as sftp:
             files = sftp.listdir_attr(source)
             for f in files:
@@ -202,26 +198,17 @@ class CreateFleet():
     
     def close_clients(self, terminate_on_close=False):
         if terminate_on_close:
-            self.ec2_client.terminate_instances(InstanceIds=[self.inst_id])
+            self.ec2_client.terminate_instances(InstanceIds=self.inst_id)
         self.ec2_client.close()
         self.pClient.close()
 
     def start(self):
-        if not (os.path.isfile('aws.yml') or os.path.isfile('conda.bash')):
-            try:
-                self.export_conda()
-            except:
-                print("Ensure you have the conda environment you want on the EC2 instance activated, the yml created, or conda.bash in the same directory as this file")
-                print("To export a conda environment use 'conda env export -f aws.yml --from-history'")
-        with open("startup.bash", 'rb') as f:
-            bash = f.read()
-        allowed_instances=['g5.48xlarge']#['g5.12xlarge']#['g5.2xlarge', 'g5.4xlarge', 'g5.8xlarge']#['g5.12xlarge', 'g5.48xlarge','p4d.24xlarge']#['g5.2xlarge', 'g5.4xlarge', 'g5.8xlarge']#, 'g5.16xlarge']'g5.24xlarge',['g5.12xlarge',  'g5.48xlarge','p4d.24xlarge']#
 
         for i in range(cfg.connection_attempts):
-            fleet_response = self.create_fleet(allowed_instances)
+            fleet_response = self.create_fleet(self.allowed_instances)
             Errors = fleet_response['Errors']
-            
-            if not Errors:
+
+            if fleet_response['Instances']:
                 fleet_id = fleet_response['FleetId']
                 self.inst_id = fleet_response['Instances'][0]['InstanceIds']
                 self.waiter.wait(InstanceIds=self.inst_id)
@@ -229,13 +216,13 @@ class CreateFleet():
                 ips = [inst['PublicIpAddress'] for inst in self.ec2_client.describe_instances(InstanceIds=self.inst_id)['Reservations'][0]['Instances']]
                 self.ip = ips[0]
                 subprocess.run("clip", input=self.ip, text=True)
-                time.sleep(5)
+                time.sleep(10)
                 for i in range(5):
                     try:
                         self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
                     except Exception as e: 
                         print(e)
-                        print("trying again")
+                        print("trying to connect again")
                         time.sleep(5)
                     else: break
                 
@@ -243,19 +230,18 @@ class CreateFleet():
                 self.run_bash('sudo apt-get update') 
                 self.run_bash('sudo apt install nvidia-driver-535 nvidia-utils-535 nvidia-fabricmanager-535 -y')
                 self.run_bash('sudo reboot')
-                time.sleep(15)
+                time.sleep(20)
                 while script_wait:
                     try:
+                        pi = ["", '2'][0] #python index number
                         self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
                         self.scp_up('startup.bash', remote_path='/home/ubuntu')
                         self.scp_up('conda.bash', remote_path='/home/ubuntu')
-                        self.scp_up('python.bash', remote_path='/home/ubuntu')
+                        self.scp_up(f'python{pi}.bash', remote_path='/home/ubuntu')
                         self.run_bash(script='nohup bash startup.bash &', print_err=False)
                         for dest, source in [(key, value)  for key, values in cfg.dirs.items() for value in values]:
-                            # tic = time.time()
                             self.scp_up(source, dest)
-                            # print("scp time", time.time()-tic)
-                        self.run_bash(script='source python.bash', tmux=True)
+                        self.run_bash(script=f'source python{pi}.bash', tmux=True)
                         script_wait=False
                     except Exception as e:
                         print(e)
@@ -283,14 +269,11 @@ class CreateFleet():
         print(ips)
         self.pulse_monitor()
     
-    def reconnect(self):
-        # ## only needed temporarily
-        # self.key_file = f"keys/SpotInstances.pem"
-        # self.pkey = paramiko.Ed25519Key.from_private_key_file(self.key_file)
-        # ##
-        self.inst_id = ["i-0be528df9bb10f408"]
-        ips = [inst['PublicIpAddress'] for inst in self.ec2_client.describe_instances(InstanceIds=self.inst_id)['Reservations'][0]['Instances']]
-        self.ip = ips[0]
+    def reconnect(self, cold_start=True):
+        if cold_start:
+            self.inst_id = ["i-0f50aaede9bea6759"]
+            ips = [inst['PublicIpAddress'] for inst in self.ec2_client.describe_instances(InstanceIds=self.inst_id)['Reservations'][0]['Instances']]
+            self.ip = ips[0]
         self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
 
         self.pulse_monitor()
@@ -304,6 +287,9 @@ class CreateFleet():
             except Exception as e:
                 print(e)
                 time.sleep(300)
+                if str(e) == "SSH session not active":
+                    print("SSH Reconnection Attempt")
+                    self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
 
         self.close_clients(True)
         
