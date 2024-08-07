@@ -17,8 +17,6 @@ cfg.spot_instances=1        #cheaper
 
 cfg.MaxSpotPriceAsPercentageOfOptimalOnDemandPrice = 100
 
-# cfg.key_file = "SpotInstances.pem"
-
 #dictionary of key(destination): item(list of sources) pairs
 cfg.dirs = {
     'nvme/python':["C:/Users/K159658/tim/python/tim_utils", "C:/Users/K159658/tim/python/complextorch",
@@ -139,9 +137,7 @@ class CreateFleet():
 
     def check_pulse(self):
         response = self.ec2_client.describe_instances()
-        # print("Current Instance ID", self.inst_id)
         for reservation in response['Reservations']:
-            # print(request['InstanceId'])
             for instance in reservation['Instances']:
                 if instance['InstanceId'] == self.inst_id[0]:
                     state = instance['State']['Name']
@@ -153,7 +149,6 @@ class CreateFleet():
         elif state != "running":
             print("STATE of INSTANCE: ", state)
         for local in cfg.rsync.keys():
-        # for local, remote in [(key, value)  for key, values in cfg.rsync.items() for value in values]:
             if 'INSTANCE_ID' in local:
                 target_path = local.replace("INSTANCE_ID", self.inst_id[0])
             else:
@@ -292,8 +287,6 @@ class CreateFleet():
                     self.pClient.connect(self.ip, username=self.username, pkey=self.pkey)
 
         self.close_clients(True)
-        
-        # self.ec2_client.cancel_spot_instance_requests(SpotInstanceRequestIds=[fleet_id])
 
 if __name__ == "__main__":
     import sys
