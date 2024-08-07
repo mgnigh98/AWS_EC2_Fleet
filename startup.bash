@@ -14,6 +14,7 @@ sudo mount /dev/nvme1n1 "$HOME/nvme"
 sudo chmod 777 $HOME/nvme
 sudo apt install unzip
 sudo apt-get install libgl1 -y
+sudo apt install dos2unix
 
 # downloads and installs aws cli
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "nvme/awscliv2.zip"
@@ -33,7 +34,6 @@ rm -rf ~/nvme/miniconda3/miniconda.sh
 
 tmux_send "echo PATH='/home/ubuntu/nvme/miniconda3/bin:$PATH' >> ~/.bashrc"
 tmux_send 'source ~/.bashrc'
-
 tmux_send 'bash conda.bash'
 
 
