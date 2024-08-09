@@ -1,8 +1,9 @@
 To run this code the following steps will need to be done on AWS:
     Create Launch Template:
         I recommend naming them something you can use in every region with the same name
-        The launch Template should specify the key being used for access
+        The launch Template should specify the key being used for ssh access (See below)
         (Recommend to have the name be consistent but with the region name in key file name ex: AWS_us-east-1.pem)
+        The key needs to be placed in a user directory (Cannot be in the C: drive must be in C:Users/$USER/
         In Network Settings you will need a security group with port 22 open
         Under Advanced details you will need the instance to have a include a IAM instance profile that has S3 Access (recommended: S3FullAccess)
     
