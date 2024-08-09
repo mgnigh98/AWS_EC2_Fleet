@@ -1,3 +1,6 @@
+Best to view this README in Raw
+
+
 To run this code the following steps will need to be done on AWS:
     Create Launch Template:
         I recommend naming them something you can use in every region with the same name
